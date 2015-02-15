@@ -1,0 +1,118 @@
+#Reproducible Research Peer Assessment 1
+  
+## Loading and preprocessing the data
+Read **activity.csv** file into variable *activity*.  
+Convert the date column into a YYYY-MM-DD format.
+````{r, echo=TRUE}
+activity <- read.csv("activity.csv", sep=",", header=TRUE, stringsAsFactors=FALSE, na.strings=NA)
+activity$date <- as.Date(activity$date, format="%Y-%m-%d")
+head(activity); tail(activity)
+```
+Load libraries *dplyr*, *ggplot2*
+````{r, echo=TRUE, results='hide'}
+library(dplyr)
+library(ggplot2)
+```
+## Mean total number of steps taken per day
+Obtain the total number of steps each day by grouping by day, then finding the total number of steps for that day.  
+Plot of histogram showing the distribution of the total steps each day.  
+The data excludes the NA values.
+```{r, echo=TRUE}
+steps.day <- activity %>%
+  group_by(date) %>%
+  summarise(sum(steps, na.rm=TRUE))
+colnames(steps.day) <- c("date", "total.steps")
+total.steps.plot <- ggplot(steps.day, aes(x=total.steps)) +
+  geom_histogram(binwidth=800) +
+  ggtitle("Histogram of Total Steps per day")
+total.steps.plot
+```
+  
+Mean and median steps taken excluding NA values
+```{r, echo=TRUE}
+steps.summary <- as.data.frame(cbind(mean(steps.day$total.steps), median(steps.day$total.steps)))
+colnames(steps.summary) <- c("mean", "median")
+head(steps.summary); tail(steps.summary)
+````
+## Average daily activity pattern
+```{r, echo=TRUE}
+mean.steps <- activity %>%
+  group_by(date) %>%
+  summarise(mean(steps, na.rm=TRUE))
+mean.steps <- subset(mean.steps[which(complete.cases(mean.steps)==TRUE),])
+colnames(mean.steps) <- c("date", "mean.steps")
+meansteps.plot <- ggplot(mean.steps, aes(x=date, y=mean.steps)) +
+  geom_line() +
+  ggtitle("Mean Number of Steps Per Day") + xlab("Date") + ylab("Mean number of steps")
+meansteps.plot
+```
+### Mean number of steps by 5-min interval
+Obtain *steps.int* which summarizes the mean steps taken at each time interval across all subjects.
+```{r, echo=TRUE}
+steps.int <- activity %>%
+  group_by(interval) %>%
+  summarise(mean(steps, na.rm=TRUE))
+colnames(steps.int) <- c("interval", "mean.steps")
+```
+5-min interval with the highest number of steps
+```{r, echo=TRUE}
+steps.int[which(steps.int$mean.steps==max(steps.int$mean.steps)),]
+```
+## Imputing missing values
+Remove NA values from the steps column by using an intermediate variable *act.na* by:  
+1. subsetting *act.na* from the *activity* dataset containing only NA values in the steps column.  
+2. using the *left_join* function, merge the *act.na* and *steps.int* datasets  
+3. impute the missing (NA) values by selecting the mean steps at each 5-min interval from the mean.steps column.  
+4. *anti_join* dataset *act.na* to the main *activity* dataset to eliminate the copies of rows with missing values (NA) in the steps column into a new variable *act.imp*.  
+5. rbind *act.na* and *act.imp* into *act.imp* to obtain a complete dataset with imputed values
+```{r, echo=TRUE}
+act.na <- filter(activity, is.na(steps)==T) #1
+act.na <- left_join(act.na, steps.int, by="interval") #2
+act.na <- transmute(act.na, steps = mean.steps, date=date, interval=interval) #3
+act.imp <- anti_join(activity, act.na, by=c("date", "interval")) #4
+act.imp <- rbind(act.na, act.imp) %>% #5
+  arrange(date, interval)
+```
+### Number of missing values in dataset
+```{r, echo=TRUE}
+length(act.na$steps)
+```
+### Histogram of adjusted total steps each day
+```{r, echo=TRUE}
+steps.day.imp <- act.imp %>%
+  group_by(date) %>%
+  summarise(sum(steps, na.rm=TRUE))
+colnames(steps.day.imp) <- c("date", "total.steps")
+total.steps.plot.imp <- ggplot(steps.day.imp, aes(x=total.steps)) +
+  geom_histogram(binwidth=800) +
+  ggtitle("Histogram of Total Steps per day\n(Adjusted)")
+total.steps.plot.imp
+```
+  
+### Adjusted mean and median total steps each day
+```{r, echo=TRUE}
+steps.summary.imp <- as.data.frame(cbind(mean(steps.day.imp$total.steps), median(steps.day.imp$total.steps)))
+colnames(steps.summary.imp) <- c("mean", "median")
+steps.summary.imp
+```
+## Differences in activity patterns between weekdays and weekends
+Create a new *day.type* column in the *act.imp* (activity with imputed values) dataset indicating either weekend or weekday
+```{r, echo=TRUE}
+act.imp <- mutate(act.imp, date, day.type=ifelse(weekdays(act.imp$date)%in%c("Saturday", "Sunday"), "Weekend", "Weekday"))
+act.imp$day.type <- as.factor(act.imp$day.type)
+```
+Mean number of steps each day
+```{r, echo=TRUE}
+daytype.comp <- act.imp %>% 
+  group_by(interval, day.type) %>%
+  summarise(mean.steps=mean(steps))
+head(daytype.comp); tail(daytype.comp)
+```
+Time series plot of mean steps taken each day by weekdays and weekends
+```{r, echo=TRUE}
+daytype.plot <- ggplot(daytype.comp, aes(x=interval, y=mean.steps)) +
+  geom_line() + facet_grid(. ~ day.type) +
+  ggtitle("Time Series Plot of Mean Steps Taken") +
+  xlab("Interval (mins)") + ylab("Mean Number of Steps")
+daytype.plot
+```
