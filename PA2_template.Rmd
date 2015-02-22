@@ -1,0 +1,117 @@
+---
+title: "Reproducible Research Peer Assessment 2"
+author: "Jansen Ng"
+output: html_document
+---
+### Read files and load libraries  
+- The *repdata-data-StormData.csv* file is read into the variable *stormData*  
+```{r, cache=TRUE, echo=TRUE, results='hide'}
+stormData <- read.table(file="repdata-data-StormData.csv", sep=",", stringsAsFactors=FALSE, header=TRUE, na.strings=c("", "NA"))
+```
+
+- The packages *dplyr*, *ggplot2*, *reshape2* are loaded
+```{r}
+library(dplyr)
+library(reshape2)
+library(ggplot2)
+```
+
+## Most Dangerous to Population Health
+
+### Data Processing  
+- The 2 variables which contain information about harm or damage to human health are *FATALITIES* and *INJURIES*.  
+- A subset of the *stormData* dataset containing *EVTYPE*, *FATALITIES*, *INJURIES* is created, then the sum of fatalities and injuries are aggregated by evtype.  
+- The resulting data frame is then separately arranged in descending order of total fatalities and total injuries.  
+```{r}
+popHealth <- stormData %>% select(EVTYPE, FATALITIES, INJURIES)
+popHealth$EVTYPE <- as.factor(popHealth$EVTYPE)
+ph1 <-  popHealth %>% group_by(EVTYPE) %>%
+          summarize(total.fatalities=sum(FATALITIES), total.injuries=sum(INJURIES))
+ph1.fatalities <- ph1 %>% arrange(desc(total.fatalities))
+ph1.injuries <- ph1 %>% arrange(desc(total.injuries))
+```
+
+### Results  
+#### Highest total fatalities  
+The top 5 storm event types are as follows:  
+```{r}
+head(ph1.fatalities, n=5)
+```
+
+#### Highest total injuries  
+The top 5 storm event types are as follows:  
+```{r}
+head(ph1.injuries, n=5)
+```
+
+### Conclusion  
+As the storm event type tornado gives the highest total fatalities as well as total injuries, the storm event type most dangerous to human health is the tornado.
+
+## Greatest Economic Consequences across the United States 
+
+### Data Processing  
+- The variables that would be relevant to this question are *STATE*, *EVTYPE*, *PROPDMG*, *PROPDMGEXP*, *CROPDMG*, *CROPDMGEXP*.
+- Flood-related damage under the variable *WFO* are excluded, and NAs are regarded as 0 in terms of damage costs.
+```{r}
+ecDmg <- stormData %>% select(EVTYPE, PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP)
+ecDmg$EVTYPE <- as.factor(ecDmg$EVTYPE)
+ecDmg <- ecDmg %>% mutate(
+  p.multip=ifelse(PROPDMGEXP=="B", 1e+09, ifelse(PROPDMGEXP=="M", 1e+06, ifelse(PROPDMGEXP=="K", 1000, NA))), 
+  c.multip=ifelse(CROPDMGEXP=="B", 1e+09, ifelse(CROPDMGEXP=="M", 1e+06, ifelse(CROPDMGEXP=="K", 1000, NA))))
+```
+
+#### Damage to Crops  
+Create dataset of storm event type in decreasing magnitude of damage to crops  
+```{r}
+ecDmg.c <- ecDmg %>% select(EVTYPE, CROPDMG, c.multip) %>%
+  filter(is.na(c.multip)==FALSE) %>%
+  mutate(crop.dmg=CROPDMG*c.multip) %>%
+  select(EVTYPE, crop.dmg) %>%
+  group_by(EVTYPE) %>%
+  summarize(total.crop.dmg=sum(crop.dmg)) %>%
+  arrange(desc(total.crop.dmg))
+```
+
+#### Damage to Property  
+Create dataset of storm event type in decreasing magnitude of damage to property  
+```{r}
+ecDmg.p <- ecDmg %>% select(EVTYPE, PROPDMG, p.multip) %>%
+  filter(is.na(p.multip)==FALSE) %>%
+  mutate(prop.dmg=PROPDMG*p.multip) %>%
+  select(EVTYPE, prop.dmg) %>%
+  group_by(EVTYPE) %>%
+  summarize(total.prop.dmg=sum(prop.dmg)) %>%
+  arrange(desc(total.prop.dmg))
+```
+
+### Results  
+Subset top 10 events to property and crops
+```{r}
+cDmgTop10 <- subset(ecDmg.c[1:10,])
+pDmgTop10 <- subset(ecDmg.p[1:10,])
+```
+
+#### Most Damage to Crops
+
+```{r, results='hold', fig.width=11}
+cDmgTop10
+
+ggplot(cDmgTop10, aes(x=factor(EVTYPE), y=total.crop.dmg)) +
+  geom_bar(stat="identity") +
+  ggtitle("Top 10 Most Damage to Crops") +
+  ylab("Total Damage ($)") + xlab("Event Type")
+```
+
+#### Most Damage to Property
+
+```{r, results='hold', fig.width=11}
+pDmgTop10
+
+ggplot(pDmgTop10, aes(x=factor(EVTYPE), y=total.prop.dmg)) +
+  geom_bar(stat="identity") +
+  ggtitle("Top 10 Most Damage to Property") +
+  ylab("Total Damage ($)") + xlab("Event Type")
+```
+
+### Conclusion  
+Based on the above plots and the data for the damage to property and crops, the most devastating storm event to the economy is the flood.
